@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini UnionFS UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GTVmN6IqLvFQtF8G8+qBj+2I82pHcq3iK1W4/teLJ9TKYHczbYCFXyoqNSNnhEyl" crossorigin="anonymous">
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+    <div class="container py-5">
+        <div class="hero-banner rounded-4 p-5 mb-5 shadow-sm text-white">
+            <div class="d-flex flex-column flex-md-row align-items-start justify-content-between gap-3">
+                <div>
+                    <h1 class="display-6 mb-2">Mini UnionFS Control Panel</h1>
+                    <p class="lead mb-1">A polished UI to build, test, mount and manage your FUSE-based union filesystem.</p>
+                    <p class="text-white-75">Use the buttons below to compile the filesystem, run the validation script, and mount the union view without terminal commands.</p>
+                </div>
+                <div class="text-md-end">
+                    <span class="badge bg-light text-dark fs-6 px-3 py-2" id="status-badge">Initializing...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row gy-4">
+            <div class="col-lg-6">
+                <div class="card ui-card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Build & Test</h5>
+                        <p class="card-text text-muted">Compile the binary and run the full automated test script for the union filesystem.</p>
+                        <div class="d-grid gap-3">
+                            <button class="btn btn-success btn-lg" id="build-btn">Build binary</button>
+                            <button class="btn btn-outline-secondary btn-lg" id="test-btn">Run full test script</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card ui-card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Mount Control</h5>
+                        <p class="card-text text-muted">Choose directories and mount or unmount the union filesystem from one place.</p>
+                        <form id="mount-form" autocomplete="off">
+                            <div class="mb-3">
+                                <label for="lower-dir" class="form-label">Lower directory</label>
+                                <input type="text" class="form-control" id="lower-dir" value="{{ default_lower }}" placeholder="/home/user/unionfs_test/lower" />
+                            </div>
+                            <div class="mb-3">
+                                <label for="upper-dir" class="form-label">Upper directory</label>
+                                <input type="text" class="form-control" id="upper-dir" value="{{ default_upper }}" placeholder="/home/user/unionfs_test/upper" />
+                            </div>
+                            <div class="mb-3">
+                                <label for="mount-point" class="form-label">Mount point</label>
+                                <input type="text" class="form-control" id="mount-point" value="{{ default_mount }}" placeholder="/home/user/unionfs_test/mount" />
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-primary btn-lg" id="mount-btn">Mount filesystem</button>
+                                <button type="button" class="btn btn-danger btn-lg" id="unmount-btn">Unmount filesystem</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card ui-card shadow-sm">
+                    <div class="card-body">
+                        <div class="row gy-3 mb-4">
+                            <div class="col-sm-6 col-md-3">
+                                <div class="status-card p-3 rounded-4 text-center">
+                                    <div class="status-title">Binary</div>
+                                    <div class="status-value" id="binary-status">Checking...</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-md-3">
+                                <div class="status-card p-3 rounded-4 text-center">
+                                    <div class="status-title">Mounted</div>
+                                    <div class="status-value" id="mount-status">Checking...</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-md-3">
+                                <div class="status-card p-3 rounded-4 text-center">
+                                    <div class="status-title">Process</div>
+                                    <div class="status-value" id="process-status">Checking...</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-md-3">
+                                <div class="status-card p-3 rounded-4 text-center">
+                                    <div class="status-title">Mount point</div>
+                                    <div class="status-value small" id="mount-point-text">Loading...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h5 class="card-title">Live logs</h5>
+                            <p class="text-muted mb-3">Monitor the UI output from build, mount, unmount, and test actions.</p>
+                            <pre id="log-output" class="log-box"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-5 text-center text-muted small">
+            Web UI created for Mini UnionFS using Flask and Bootstrap. Run from the project folder in WSL.
+        </footer>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            const mountPoint = data.mountPoint;
+            document.getElementById('binary-status').innerText = data.binaryExists ? 'Ready' : 'Missing';
+            document.getElementById('mount-status').innerText = data.mountActive ? 'Yes' : 'No';
+            document.getElementById('process-status').innerText = data.mountProcessRunning ? 'Running' : 'Stopped';
+            document.getElementById('mount-point-text').innerText = data.mountPoint;
+            document.getElementById('status-badge').innerText = data.mountActive ? 'Mounted' : 'Idle';
+            document.getElementById('log-output').innerText = data.log;
+        }
+
+        async function runAction(url, formData = null) {
+            const options = { method: 'POST' };
+            if (formData) options.body = formData;
+            const response = await fetch(url, options);
+            const data = await response.json();
+            await fetchStatus();
+            alert(data.status === 'success' ? data.message || 'Completed successfully' : data.message || 'Failed');
+        }
+
+        document.getElementById('build-btn').addEventListener('click', () => runAction('/api/build'));
+        document.getElementById('test-btn').addEventListener('click', () => runAction('/api/test'));
+        document.getElementById('mount-btn').addEventListener('click', () => {
+            const form = new FormData();
+            form.append('lower', document.getElementById('lower-dir').value);
+            form.append('upper', document.getElementById('upper-dir').value);
+            form.append('mountpoint', document.getElementById('mount-point').value);
+            runAction('/api/mount', form);
+        });
+        document.getElementById('unmount-btn').addEventListener('click', () => {
+            const form = new FormData();
+            form.append('mountpoint', document.getElementById('mount-point').value);
+            runAction('/api/unmount', form);
+        });
+
+        setInterval(fetchStatus, 2000);
+        fetchStatus();
+    </script>
+</body>
+</html>
